@@ -1,133 +1,207 @@
 from __future__ import annotations
 
-import re
-import random
-import string
-import json
 from aiohttp import ClientSession
+import json
+import uuid
+import re
+import aiohttp
+from pathlib import Path
+from functools import wraps
+from typing import Optional, Callable, Any
 
-from ..typing import AsyncResult, Messages, ImageType
-from ..image import ImageResponse, to_data_uri
+from ..typing import AsyncResult, Messages, ImagesType
 from .base_provider import AsyncGeneratorProvider, ProviderModelMixin
+from .helper import format_prompt
+from ..image import ImageResponse, to_data_uri
+from ..cookies import get_cookies_dir
+from .. import debug
+
+
+def cached_value(filename: str, cache_key: str = 'validated_value'):
+    """Universal cache decorator for both memory and file caching"""
+    def decorator(fetch_func: Callable) -> Callable:
+        memory_cache: Optional[str] = None
+        
+        @wraps(fetch_func)
+        async def wrapper(cls, *args, force_refresh=False, **kwargs) -> Any:
+            nonlocal memory_cache
+            
+            # If force refresh, clear caches
+            if force_refresh:
+                memory_cache = None
+                try:
+                    cache_file = Path(get_cookies_dir()) / filename
+                    if cache_file.exists():
+                        cache_file.unlink()
+                except Exception as e:
+                    debug.log(f"Error clearing cache file: {e}")
+            
+            # Check memory cache first
+            if memory_cache is not None:
+                return memory_cache
+            
+            # Check file cache
+            cache_file = Path(get_cookies_dir()) / filename
+            try:
+                if cache_file.exists():
+                    with open(cache_file, 'r') as f:
+                        data = json.load(f)
+                        if data.get(cache_key):
+                            memory_cache = data[cache_key]
+                            return memory_cache
+            except Exception as e:
+                debug.log(f"Error reading cache file: {e}")
+            
+            # Fetch new value
+            try:
+                value = await fetch_func(cls, *args, **kwargs)
+                memory_cache = value
+                
+                # Save to file
+                cache_file.parent.mkdir(exist_ok=True)
+                try:
+                    with open(cache_file, 'w') as f:
+                        json.dump({cache_key: value}, f)
+                except Exception as e:
+                    debug.log(f"Error writing to cache file: {e}")
+                
+                return value
+            except Exception as e:
+                debug.log(f"Error fetching value: {e}")
+                raise
+                
+        return wrapper
+    return decorator
+
 
 class Blackbox(AsyncGeneratorProvider, ProviderModelMixin):
+    label = "Blackbox AI"
     url = "https://www.blackbox.ai"
     api_endpoint = "https://www.blackbox.ai/api/chat"
+    
     working = True
     supports_stream = True
     supports_system_message = True
     supports_message_history = True
-
+    
     default_model = 'blackboxai'
-    image_models = ['ImageGeneration']
-    models = [
-        default_model,
-        'blackboxai-pro',
-
-        "llama-3.1-8b",
-        'llama-3.1-70b',
-        'llama-3.1-405b',
-
-        'gpt-4o',
-
-        'gemini-pro',
-        'gemini-1.5-flash',
-
-        'claude-sonnet-3.5',
-
-        'PythonAgent',
-        'JavaAgent',
-        'JavaScriptAgent',
-        'HTMLAgent',
-        'GoogleCloudAgent',
-        'AndroidDeveloper',
-        'SwiftDeveloper',
-        'Next.jsAgent',
-        'MongoDBAgent',
-        'PyTorchAgent',
-        'ReactAgent',
-        'XcodeAgent',
-        'AngularJSAgent',
-        *image_models,
-    ]
+    default_vision_model = default_model
+    default_image_model = 'ImageGeneration' 
+    image_models = [default_image_model]
+    vision_models = [default_vision_model, 'gpt-4o', 'gemini-pro', 'gemini-1.5-flash', 'llama-3.1-8b', 'llama-3.1-70b', 'llama-3.1-405b']
+    
+    userSelectedModel = ['gpt-4o', 'gemini-pro', 'claude-sonnet-3.5', 'blackboxai-pro']
 
     agentMode = {
         'ImageGeneration': {'mode': True, 'id': "ImageGenerationLV45LJp", 'name': "Image Generation"},
+        #
+        'meta-llama/Llama-3.3-70B-Instruct-Turbo': {'mode': True, 'id': "meta-llama/Llama-3.3-70B-Instruct-Turbo", 'name': "Meta-Llama-3.3-70B-Instruct-Turbo"},
+        'mistralai/Mistral-7B-Instruct-v0.2': {'mode': True, 'id': "mistralai/Mistral-7B-Instruct-v0.2", 'name': "Mistral-(7B)-Instruct-v0.2"},
+        'deepseek-ai/deepseek-llm-67b-chat': {'mode': True, 'id': "deepseek-ai/deepseek-llm-67b-chat", 'name': "DeepSeek-LLM-Chat-(67B)"},
+        'databricks/dbrx-instruct': {'mode': True, 'id': "databricks/dbrx-instruct", 'name': "DBRX-Instruct"},
+        'Qwen/QwQ-32B-Preview': {'mode': True, 'id': "Qwen/QwQ-32B-Preview", 'name': "Qwen-QwQ-32B-Preview"},
+        'NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO': {'mode': True, 'id': "NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO", 'name': "Nous-Hermes-2-Mixtral-8x7B-DPO"}
     }
 
     trendingAgentMode = {
-        "blackboxai": {},
         "gemini-1.5-flash": {'mode': True, 'id': 'Gemini'},
         "llama-3.1-8b": {'mode': True, 'id': "llama-3.1-8b"},
         'llama-3.1-70b': {'mode': True, 'id': "llama-3.1-70b"},
-        'llama-3.1-405b': {'mode': True, 'id': "llama-3.1-405b"},
+        'llama-3.1-405b': {'mode': True, 'id': "llama-3.1-405"},
+        #
+        'Python Agent': {'mode': True, 'id': "Python Agent"},
+        'Java Agent': {'mode': True, 'id': "Java Agent"},
+        'JavaScript Agent': {'mode': True, 'id': "JavaScript Agent"},
+        'HTML Agent': {'mode': True, 'id': "HTML Agent"},
+        'Google Cloud Agent': {'mode': True, 'id': "Google Cloud Agent"},
+        'Android Developer': {'mode': True, 'id': "Android Developer"},
+        'Swift Developer': {'mode': True, 'id': "Swift Developer"},
+        'Next.js Agent': {'mode': True, 'id': "Next.js Agent"},
+        'MongoDB Agent': {'mode': True, 'id': "MongoDB Agent"},
+        'PyTorch Agent': {'mode': True, 'id': "PyTorch Agent"},
+        'React Agent': {'mode': True, 'id': "React Agent"},
+        'Xcode Agent': {'mode': True, 'id': "Xcode Agent"},
+        'AngularJS Agent': {'mode': True, 'id': "AngularJS Agent"},
+        #
         'blackboxai-pro': {'mode': True, 'id': "BLACKBOXAI-PRO"},
-        'PythonAgent': {'mode': True, 'id': "Python Agent"},
-        'JavaAgent': {'mode': True, 'id': "Java Agent"},
-        'JavaScriptAgent': {'mode': True, 'id': "JavaScript Agent"},
-        'HTMLAgent': {'mode': True, 'id': "HTML Agent"},
-        'GoogleCloudAgent': {'mode': True, 'id': "Google Cloud Agent"},
-        'AndroidDeveloper': {'mode': True, 'id': "Android Developer"},
-        'SwiftDeveloper': {'mode': True, 'id': "Swift Developer"},
-        'Next.jsAgent': {'mode': True, 'id': "Next.js Agent"},
-        'MongoDBAgent': {'mode': True, 'id': "MongoDB Agent"},
-        'PyTorchAgent': {'mode': True, 'id': "PyTorch Agent"},
-        'ReactAgent': {'mode': True, 'id': "React Agent"},
-        'XcodeAgent': {'mode': True, 'id': "Xcode Agent"},
-        'AngularJSAgent': {'mode': True, 'id': "AngularJS Agent"},
+        #
+        'repomap': {'mode': True, 'id': "repomap"},
+        #
+        'Heroku Agent': {'mode': True, 'id': "Heroku Agent"},
+        'Godot Agent': {'mode': True, 'id': "Godot Agent"},
+        'Go Agent': {'mode': True, 'id': "Go Agent"},
+        'Gitlab Agent': {'mode': True, 'id': "Gitlab Agent"},
+        'Git Agent': {'mode': True, 'id': "Git Agent"},
+        'Flask Agent': {'mode': True, 'id': "Flask Agent"},
+        'Firebase Agent': {'mode': True, 'id': "Firebase Agent"},
+        'FastAPI Agent': {'mode': True, 'id': "FastAPI Agent"},
+        'Erlang Agent': {'mode': True, 'id': "Erlang Agent"},
+        'Electron Agent': {'mode': True, 'id': "Electron Agent"},
+        'Docker Agent': {'mode': True, 'id': "Docker Agent"},
+        'DigitalOcean Agent': {'mode': True, 'id': "DigitalOcean Agent"},
+        'Bitbucket Agent': {'mode': True, 'id': "Bitbucket Agent"},
+        'Azure Agent': {'mode': True, 'id': "Azure Agent"},
+        'Flutter Agent': {'mode': True, 'id': "Flutter Agent"},
+        'Youtube Agent': {'mode': True, 'id': "Youtube Agent"},
+        'builder Agent': {'mode': True, 'id': "builder Agent"},
     }
     
-    userSelectedModel = {
-        "gpt-4o": "gpt-4o",
-        "gemini-pro": "gemini-pro",
-        'claude-sonnet-3.5': "claude-sonnet-3.5",
-    }
-    
-    model_prefixes = {
-        'gpt-4o': '@GPT-4o',
-        'gemini-pro': '@Gemini-PRO',
-        'claude-sonnet-3.5': '@Claude-Sonnet-3.5',
+    models = list(dict.fromkeys([default_model, *userSelectedModel, *list(agentMode.keys()), *list(trendingAgentMode.keys())]))
 
-        'PythonAgent': '@Python Agent',
-        'JavaAgent': '@Java Agent',
-        'JavaScriptAgent': '@JavaScript Agent',
-        'HTMLAgent': '@HTML Agent',
-        'GoogleCloudAgent': '@Google Cloud Agent',
-        'AndroidDeveloper': '@Android Developer',
-        'SwiftDeveloper': '@Swift Developer',
-        'Next.jsAgent': '@Next.js Agent',
-        'MongoDBAgent': '@MongoDB Agent',
-        'PyTorchAgent': '@PyTorch Agent',
-        'ReactAgent': '@React Agent',
-        'XcodeAgent': '@Xcode Agent',
-        'AngularJSAgent': '@AngularJS Agent',
-        'blackboxai-pro': '@BLACKBOXAI-PRO',
-        'ImageGeneration': '@Image Generation',
-    }
-    
-    model_referers = {
-        "blackboxai": f"{url}/?model=blackboxai",
-        "gpt-4o": f"{url}/?model=gpt-4o",
-        "gemini-pro": f"{url}/?model=gemini-pro",
-        "claude-sonnet-3.5": f"{url}/?model=claude-sonnet-3.5"
-    }
-    
     model_aliases = {
-        "gemini-flash": "gemini-1.5-flash",
+        ### chat ###
+        "gpt-4": "gpt-4o",
+        "gemini-1.5-flash": "gemini-1.5-flash",
+        "gemini-1.5-pro": "gemini-pro",
         "claude-3.5-sonnet": "claude-sonnet-3.5",
+        "llama-3.3-70b": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        "mixtral-7b": "mistralai/Mistral-7B-Instruct-v0.2",
+        "deepseek-chat": "deepseek-ai/deepseek-llm-67b-chat",
+        "dbrx-instruct": "databricks/dbrx-instruct",
+        "qwq-32b": "Qwen/QwQ-32B-Preview",
+        "hermes-2-dpo": "NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO",
+        
+        ### image ###
         "flux": "ImageGeneration",
     }
 
     @classmethod
-    def get_model(cls, model: str) -> str:
-        if model in cls.models:
-            return model
-        elif model in cls.userSelectedModel:
-            return model
-        elif model in cls.model_aliases:
-            return cls.model_aliases[model]
-        else:
-            return cls.default_model
+    @cached_value(filename='blackbox.json')
+    async def get_validated(cls) -> str:
+        """Fetch validated value from website"""
+        async with aiohttp.ClientSession() as session:
+            async with session.get(cls.url) as response:
+                if response.status != 200:
+                    raise RuntimeError("Failed to get validated value")
+                
+                page_content = await response.text()
+                js_files = re.findall(r'static/chunks/\d{4}-[a-fA-F0-9]+\.js', page_content)
+                
+                if not js_files:
+                    js_files = re.findall(r'static/js/[a-zA-Z0-9-]+\.js', page_content)
+
+                uuid_format = r'["\']([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})["\']'
+
+                def is_valid_context(text_around):
+                    return any(char + '=' in text_around for char in 'abcdefghijklmnopqrstuvwxyz')
+
+                for js_file in js_files:
+                    js_url = f"{cls.url}/_next/{js_file}"
+                    try:
+                        async with session.get(js_url) as js_response:
+                            if js_response.status == 200:
+                                js_content = await js_response.text()
+                                for match in re.finditer(uuid_format, js_content):
+                                    start = max(0, match.start() - 10)
+                                    end = min(len(js_content), match.end() + 10)
+                                    context = js_content[start:end]
+                                    
+                                    if is_valid_context(context):
+                                        return match.group(1)
+                    except Exception:
+                        continue
+                        
+        raise RuntimeError("Failed to get validated value")
 
     @classmethod
     async def create_async_generator(
@@ -135,108 +209,101 @@ class Blackbox(AsyncGeneratorProvider, ProviderModelMixin):
         model: str,
         messages: Messages,
         proxy: str = None,
-        image: ImageType = None,
-        image_name: str = None,
-        webSearchMode: bool = False,
+        prompt: str = None,
+        web_search: bool = False,
+        images: ImagesType = None,
+        top_p: float = None,
+        temperature: float = None,
+        max_tokens: int = None,
         **kwargs
-    ) -> AsyncResult:
-        model = cls.get_model(model)
-        
+    ) -> AsyncResult:      
         headers = {
             "accept": "*/*",
             "accept-language": "en-US,en;q=0.9",
-            "cache-control": "no-cache",
             "content-type": "application/json",
-            "origin": cls.url,
-            "pragma": "no-cache",
-            "referer": cls.model_referers.get(model, cls.url),
-            "sec-ch-ua": '"Not;A=Brand";v="24", "Chromium";v="128"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Linux"',
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-origin",
-            "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+            "origin": "https://www.blackbox.ai",
+            "referer": "https://www.blackbox.ai/",
+            "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
         }
-
-        if model in cls.model_prefixes:
-            prefix = cls.model_prefixes[model]
-            if not messages[0]['content'].startswith(prefix):
-                messages[0]['content'] = f"{prefix} {messages[0]['content']}"
         
-        random_id = ''.join(random.choices(string.ascii_letters + string.digits, k=7))
-        messages[-1]['id'] = random_id
-        messages[-1]['role'] = 'user'
+        model = cls.get_model(model)
+        
+        conversation_id = str(uuid.uuid4())[:7]
+        validated_value = await cls.get_validated()
+        
+        formatted_message = format_prompt(messages)
+            
+        first_message = next((msg for msg in messages if msg['role'] == 'user'), None)
+        current_messages = [{"id": conversation_id, "content": formatted_message, "role": "user"}]
 
-        if image is not None:
-            messages[-1]['data'] = {
-                'fileText': '',
-                'imageBase64': to_data_uri(image),
-                'title': image_name
+        if images is not None:
+            current_messages[-1]['data'] = {
+                "imagesData": [
+                    {
+                        "filePath": f"/{image_name}",
+                        "contents": to_data_uri(image)
+                    }
+                    for image, image_name in images
+                ],
+                "fileText": "",
+                "title": ""
             }
-            messages[-1]['content'] = 'FILE:BB\n$#$\n\n$#$\n' + messages[-1]['content']
         
-        data = {
-            "messages": messages,
-            "id": random_id,
-            "previewToken": None,
-            "userId": None,
-            "codeModelMode": True,
-            "agentMode": {},
-            "trendingAgentMode": {},
-            "isMicMode": False,
-            "userSystemPrompt": None,
-            "maxTokens": 1024,
-            "playgroundTopP": 0.9,
-            "playgroundTemperature": 0.5,
-            "isChromeExt": False,
-            "githubToken": None,
-            "clickedAnswer2": False,
-            "clickedAnswer3": False,
-            "clickedForceWebSearch": False,
-            "visitFromDelta": False,
-            "mobileClient": False,
-            "userSelectedModel": None,
-            "webSearchMode": webSearchMode,
-        }
-
-        if model in cls.agentMode:
-            data["agentMode"] = cls.agentMode[model]
-        elif model in cls.trendingAgentMode:
-            data["trendingAgentMode"] = cls.trendingAgentMode[model]
-        elif model in cls.userSelectedModel:
-            data["userSelectedModel"] = cls.userSelectedModel[model]
-        
-        async with ClientSession(headers=headers) as session:
-            async with session.post(cls.api_endpoint, json=data, proxy=proxy) as response:
-                response.raise_for_status()
-                if model == 'ImageGeneration':
-                    response_text = await response.text()
-                    url_match = re.search(r'https://storage\.googleapis\.com/[^\s\)]+', response_text)
-                    if url_match:
-                        image_url = url_match.group(0)
-                        yield ImageResponse(image_url, alt=messages[-1]['content'])
-                    else:
-                        raise Exception("Image URL not found in the response")
-                else:
-                    full_response = ""
-                    search_results_json = ""
-                    async for chunk in response.content.iter_any():
-                        if chunk:
-                            decoded_chunk = chunk.decode()
-                            decoded_chunk = re.sub(r'\$@\$v=[^$]+\$@\$', '', decoded_chunk)
-                            if decoded_chunk.strip():
-                                if '$~~~$' in decoded_chunk:
-                                    search_results_json += decoded_chunk
+        while True:
+            async with ClientSession(headers=headers) as session:
+                data = {
+                    "messages": current_messages,
+                    "id": conversation_id,
+                    "previewToken": None,
+                    "userId": None,
+                    "codeModelMode": True,
+                    "agentMode": cls.agentMode.get(model, {}) if model in cls.agentMode else {},
+                    "trendingAgentMode": cls.trendingAgentMode.get(model, {}) if model in cls.trendingAgentMode else {},
+                    "isMicMode": False,
+                    "userSystemPrompt": None,
+                    "maxTokens": max_tokens,
+                    "playgroundTopP": top_p,
+                    "playgroundTemperature": temperature,
+                    "isChromeExt": False,
+                    "githubToken": "",
+                    "clickedAnswer2": False,
+                    "clickedAnswer3": False,
+                    "clickedForceWebSearch": False,
+                    "visitFromDelta": False,
+                    "mobileClient": False,
+                    "userSelectedModel": model if model in cls.userSelectedModel else None,
+                    "validated": validated_value,
+                    "imageGenerationMode": False,
+                    "webSearchModePrompt": False,
+                    "deepSearchMode": False,
+                    "domains": None,
+                    "webSearchMode": web_search
+                }
+                
+                try:
+                    async with session.post(cls.api_endpoint, json=data, proxy=proxy) as response:
+                        response.raise_for_status()
+                        first_chunk = True
+                        content_received = False
+                        async for chunk in response.content:
+                            if chunk:
+                                content_received = True
+                                decoded = chunk.decode()
+                                if first_chunk and "Generated by BLACKBOX.AI" in decoded:
+                                    validated_value = await cls.get_validated(force_refresh=True)
+                                    break
+                                first_chunk = False
+                                if model in cls.image_models and decoded.startswith("![]("):
+                                    image_url = decoded.strip("![]()")
+                                    prompt = messages[-1]["content"]
+                                    yield ImageResponse(images=image_url, alt=prompt)
                                 else:
-                                    full_response += decoded_chunk
-                                    yield decoded_chunk
-
-                    if data["webSearchMode"] and search_results_json:
-                        match = re.search(r'\$~~~\$(.*?)\$~~~\$', search_results_json, re.DOTALL)
-                        if match:
-                            search_results = json.loads(match.group(1))
-                            formatted_results = "\n\n**Sources:**\n"
-                            for i, result in enumerate(search_results[:5], 1):
-                                formatted_results += f"{i}. [{result['title']}]({result['link']})\n"
-                            yield formatted_results
+                                    yield decoded
+                        else:
+                            if not content_received:
+                                debug.log("Empty response received from Blackbox API, retrying...")
+                                continue
+                            return
+                except Exception as e:
+                    debug.log(f"Error in request: {e}")
+                    raise

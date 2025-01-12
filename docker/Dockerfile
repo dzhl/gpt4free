@@ -40,6 +40,7 @@ RUN apt-get -qqy update \
 
 # Update entrypoint
 COPY docker/supervisor.conf /etc/supervisor/conf.d/selenium.conf
+COPY docker/supervisor-api.conf /etc/supervisor/conf.d/api.conf
 COPY docker/supervisor-gui.conf /etc/supervisor/conf.d/gui.conf
 
 # If no gui
@@ -77,10 +78,10 @@ RUN pip install --break-system-packages --upgrade pip \
   && pip install --break-system-packages \
     undetected-chromedriver selenium-wire \
   && pip uninstall -y --break-system-packages \
-    pywebview plyer
+    pywebview
 
 # Copy the entire package into the container.
 ADD --chown=$G4F_USER:$G4F_USER g4f $G4F_DIR/g4f
 
 # Expose ports
-EXPOSE 8080 1337
+EXPOSE 8080 1337 7900
