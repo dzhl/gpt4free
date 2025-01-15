@@ -1,242 +1,319 @@
 from __future__ import annotations
 
+from aiohttp import ClientSession, TCPConnector, ClientTimeout
+
+from pathlib import Path
 import re
+import json
 import random
 import string
-import json
-from aiohttp import ClientSession
 
-from ..typing import AsyncResult, Messages, ImageType
-from ..image import ImageResponse, to_data_uri
+
+
+from ..typing import AsyncResult, Messages, ImagesType
+from ..requests.raise_for_status import raise_for_status
 from .base_provider import AsyncGeneratorProvider, ProviderModelMixin
+from ..image import ImageResponse, to_data_uri
+from ..cookies import get_cookies_dir
+from .helper import format_prompt
+from ..providers.response import FinishReason, JsonConversation
+
+class Conversation(JsonConversation):
+    validated_value: str = None
+    chat_id: str = None
+    message_history: Messages = []
+
+    def __init__(self, model: str):
+        self.model = model
 
 class Blackbox(AsyncGeneratorProvider, ProviderModelMixin):
+    label = "Blackbox AI"
     url = "https://www.blackbox.ai"
     api_endpoint = "https://www.blackbox.ai/api/chat"
+    
     working = True
-    supports_stream = True
-    supports_system_message = True
+    needs_auth = True
+    supports_stream = False
+    supports_system_message = False
     supports_message_history = True
-
-    default_model = 'blackboxai'
-    image_models = ['ImageGeneration']
-    models = [
-        default_model,
-        'blackboxai-pro',
-
-        "llama-3.1-8b",
-        'llama-3.1-70b',
-        'llama-3.1-405b',
-
-        'gpt-4o',
-
-        'gemini-pro',
-        'gemini-1.5-flash',
-
-        'claude-sonnet-3.5',
-
-        'PythonAgent',
-        'JavaAgent',
-        'JavaScriptAgent',
-        'HTMLAgent',
-        'GoogleCloudAgent',
-        'AndroidDeveloper',
-        'SwiftDeveloper',
-        'Next.jsAgent',
-        'MongoDBAgent',
-        'PyTorchAgent',
-        'ReactAgent',
-        'XcodeAgent',
-        'AngularJSAgent',
-        *image_models,
-    ]
+    
+    default_model = "blackboxai"
+    default_vision_model = default_model
+    default_image_model = 'ImageGeneration' 
+    image_models = [default_image_model]
+    vision_models = [default_vision_model, 'gpt-4o', 'gemini-pro', 'gemini-1.5-flash', 'llama-3.1-8b', 'llama-3.1-70b', 'llama-3.1-405b']
+    
+    userSelectedModel = ['gpt-4o', 'gemini-pro', 'claude-sonnet-3.5', 'blackboxai-pro']
 
     agentMode = {
         'ImageGeneration': {'mode': True, 'id': "ImageGenerationLV45LJp", 'name': "Image Generation"},
+        #
+        'meta-llama/Llama-3.3-70B-Instruct-Turbo': {'mode': True, 'id': "meta-llama/Llama-3.3-70B-Instruct-Turbo", 'name': "Meta-Llama-3.3-70B-Instruct-Turbo"},
+        'mistralai/Mistral-7B-Instruct-v0.2': {'mode': True, 'id': "mistralai/Mistral-7B-Instruct-v0.2", 'name': "Mistral-(7B)-Instruct-v0.2"},
+        'deepseek-ai/deepseek-llm-67b-chat': {'mode': True, 'id': "deepseek-ai/deepseek-llm-67b-chat", 'name': "DeepSeek-LLM-Chat-(67B)"},
+        'databricks/dbrx-instruct': {'mode': True, 'id': "databricks/dbrx-instruct", 'name': "DBRX-Instruct"},
+        'Qwen/QwQ-32B-Preview': {'mode': True, 'id': "Qwen/QwQ-32B-Preview", 'name': "Qwen-QwQ-32B-Preview"},
+        'NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO': {'mode': True, 'id': "NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO", 'name': "Nous-Hermes-2-Mixtral-8x7B-DPO"}
     }
 
     trendingAgentMode = {
-        "blackboxai": {},
         "gemini-1.5-flash": {'mode': True, 'id': 'Gemini'},
         "llama-3.1-8b": {'mode': True, 'id': "llama-3.1-8b"},
         'llama-3.1-70b': {'mode': True, 'id': "llama-3.1-70b"},
-        'llama-3.1-405b': {'mode': True, 'id': "llama-3.1-405b"},
+        'llama-3.1-405b': {'mode': True, 'id': "llama-3.1-405"},
+        #
+        'Python Agent': {'mode': True, 'id': "Python Agent"},
+        'Java Agent': {'mode': True, 'id': "Java Agent"},
+        'JavaScript Agent': {'mode': True, 'id': "JavaScript Agent"},
+        'HTML Agent': {'mode': True, 'id': "HTML Agent"},
+        'Google Cloud Agent': {'mode': True, 'id': "Google Cloud Agent"},
+        'Android Developer': {'mode': True, 'id': "Android Developer"},
+        'Swift Developer': {'mode': True, 'id': "Swift Developer"},
+        'Next.js Agent': {'mode': True, 'id': "Next.js Agent"},
+        'MongoDB Agent': {'mode': True, 'id': "MongoDB Agent"},
+        'PyTorch Agent': {'mode': True, 'id': "PyTorch Agent"},
+        'React Agent': {'mode': True, 'id': "React Agent"},
+        'Xcode Agent': {'mode': True, 'id': "Xcode Agent"},
+        'AngularJS Agent': {'mode': True, 'id': "AngularJS Agent"},
+        #
         'blackboxai-pro': {'mode': True, 'id': "BLACKBOXAI-PRO"},
-        'PythonAgent': {'mode': True, 'id': "Python Agent"},
-        'JavaAgent': {'mode': True, 'id': "Java Agent"},
-        'JavaScriptAgent': {'mode': True, 'id': "JavaScript Agent"},
-        'HTMLAgent': {'mode': True, 'id': "HTML Agent"},
-        'GoogleCloudAgent': {'mode': True, 'id': "Google Cloud Agent"},
-        'AndroidDeveloper': {'mode': True, 'id': "Android Developer"},
-        'SwiftDeveloper': {'mode': True, 'id': "Swift Developer"},
-        'Next.jsAgent': {'mode': True, 'id': "Next.js Agent"},
-        'MongoDBAgent': {'mode': True, 'id': "MongoDB Agent"},
-        'PyTorchAgent': {'mode': True, 'id': "PyTorch Agent"},
-        'ReactAgent': {'mode': True, 'id': "React Agent"},
-        'XcodeAgent': {'mode': True, 'id': "Xcode Agent"},
-        'AngularJSAgent': {'mode': True, 'id': "AngularJS Agent"},
+        #
+        'repomap': {'mode': True, 'id': "repomap"},
+        #
+        'Heroku Agent': {'mode': True, 'id': "Heroku Agent"},
+        'Godot Agent': {'mode': True, 'id': "Godot Agent"},
+        'Go Agent': {'mode': True, 'id': "Go Agent"},
+        'Gitlab Agent': {'mode': True, 'id': "Gitlab Agent"},
+        'Git Agent': {'mode': True, 'id': "Git Agent"},
+        'Flask Agent': {'mode': True, 'id': "Flask Agent"},
+        'Firebase Agent': {'mode': True, 'id': "Firebase Agent"},
+        'FastAPI Agent': {'mode': True, 'id': "FastAPI Agent"},
+        'Erlang Agent': {'mode': True, 'id': "Erlang Agent"},
+        'Electron Agent': {'mode': True, 'id': "Electron Agent"},
+        'Docker Agent': {'mode': True, 'id': "Docker Agent"},
+        'DigitalOcean Agent': {'mode': True, 'id': "DigitalOcean Agent"},
+        'Bitbucket Agent': {'mode': True, 'id': "Bitbucket Agent"},
+        'Azure Agent': {'mode': True, 'id': "Azure Agent"},
+        'Flutter Agent': {'mode': True, 'id': "Flutter Agent"},
+        'Youtube Agent': {'mode': True, 'id': "Youtube Agent"},
+        'builder Agent': {'mode': True, 'id': "builder Agent"},
     }
     
-    userSelectedModel = {
-        "gpt-4o": "gpt-4o",
-        "gemini-pro": "gemini-pro",
-        'claude-sonnet-3.5': "claude-sonnet-3.5",
-    }
-    
-    model_prefixes = {
-        'gpt-4o': '@GPT-4o',
-        'gemini-pro': '@Gemini-PRO',
-        'claude-sonnet-3.5': '@Claude-Sonnet-3.5',
+    models = list(dict.fromkeys([default_model, *userSelectedModel, *list(agentMode.keys()), *list(trendingAgentMode.keys())]))
 
-        'PythonAgent': '@Python Agent',
-        'JavaAgent': '@Java Agent',
-        'JavaScriptAgent': '@JavaScript Agent',
-        'HTMLAgent': '@HTML Agent',
-        'GoogleCloudAgent': '@Google Cloud Agent',
-        'AndroidDeveloper': '@Android Developer',
-        'SwiftDeveloper': '@Swift Developer',
-        'Next.jsAgent': '@Next.js Agent',
-        'MongoDBAgent': '@MongoDB Agent',
-        'PyTorchAgent': '@PyTorch Agent',
-        'ReactAgent': '@React Agent',
-        'XcodeAgent': '@Xcode Agent',
-        'AngularJSAgent': '@AngularJS Agent',
-        'blackboxai-pro': '@BLACKBOXAI-PRO',
-        'ImageGeneration': '@Image Generation',
-    }
-    
-    model_referers = {
-        "blackboxai": f"{url}/?model=blackboxai",
-        "gpt-4o": f"{url}/?model=gpt-4o",
-        "gemini-pro": f"{url}/?model=gemini-pro",
-        "claude-sonnet-3.5": f"{url}/?model=claude-sonnet-3.5"
-    }
-    
     model_aliases = {
-        "gemini-flash": "gemini-1.5-flash",
+        ### chat ###
+        "gpt-4": "gpt-4o",
+        "gemini-1.5-flash": "gemini-1.5-flash",
+        "gemini-1.5-pro": "gemini-pro",
         "claude-3.5-sonnet": "claude-sonnet-3.5",
+        "llama-3.3-70b": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        "mixtral-7b": "mistralai/Mistral-7B-Instruct-v0.2",
+        "deepseek-chat": "deepseek-ai/deepseek-llm-67b-chat",
+        "dbrx-instruct": "databricks/dbrx-instruct",
+        "qwq-32b": "Qwen/QwQ-32B-Preview",
+        "hermes-2-dpo": "NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO",
+        
+        ### image ###
         "flux": "ImageGeneration",
     }
 
     @classmethod
-    def get_model(cls, model: str) -> str:
-        if model in cls.models:
-            return model
-        elif model in cls.userSelectedModel:
-            return model
-        elif model in cls.model_aliases:
-            return cls.model_aliases[model]
-        else:
-            return cls.default_model
+    async def fetch_validated(
+        cls,
+        url: str = "https://www.blackbox.ai",
+        force_refresh: bool = False
+    ) -> Optional[str]:
+        """
+        Asynchronously retrieves the validated_value from the specified URL.
+        """
+        cache_file = Path(get_cookies_dir()) / 'blackbox.json'
+        
+        if not force_refresh and cache_file.exists():
+            try:
+                with open(cache_file, 'r') as f:
+                    data = json.load(f)
+                    if data.get('validated_value'):
+                        return data['validated_value']
+            except Exception as e:
+                print(f"Error reading cache: {e}")
+        
+        js_file_pattern = r'static/chunks/\d{4}-[a-fA-F0-9]+\.js'
+        uuid_pattern = r'["\']([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})["\']'
+
+        def is_valid_context(text: str) -> bool:
+            """Checks if the context is valid."""
+            return any(char + '=' in text for char in 'abcdefghijklmnopqrstuvwxyz')
+
+        async with ClientSession() as session:
+            try:
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        print("Failed to load the page.")
+                        return None
+
+                    page_content = await response.text()
+                    js_files = re.findall(js_file_pattern, page_content)
+
+                for js_file in js_files:
+                    js_url = f"{url}/_next/{js_file}"
+                    async with session.get(js_url) as js_response:
+                        if js_response.status == 200:
+                            js_content = await js_response.text()
+                            for match in re.finditer(uuid_pattern, js_content):
+                                start = max(0, match.start() - 10)
+                                end = min(len(js_content), match.end() + 10)
+                                context = js_content[start:end]
+
+                                if is_valid_context(context):
+                                    validated_value = match.group(1)
+                                    
+                                    # Save to cache
+                                    cache_file.parent.mkdir(exist_ok=True)
+                                    try:
+                                        with open(cache_file, 'w') as f:
+                                            json.dump({'validated_value': validated_value}, f)
+                                    except Exception as e:
+                                        print(f"Error writing cache: {e}")
+                                        
+                                    return validated_value
+
+            except Exception as e:
+                print(f"Error retrieving validated_value: {e}")
+
+        return None
+
+    @classmethod
+    def generate_chat_id(cls) -> str:
+        """Generate a random chat ID"""
+        chars = string.ascii_letters + string.digits
+        return ''.join(random.choice(chars) for _ in range(7))
 
     @classmethod
     async def create_async_generator(
         cls,
         model: str,
         messages: Messages,
+        prompt: str = None,
         proxy: str = None,
-        image: ImageType = None,
-        image_name: str = None,
-        webSearchMode: bool = False,
+        web_search: bool = False,
+        images: ImagesType = None,
+        top_p: float = None,
+        temperature: float = None,
+        max_tokens: int = None,
+        conversation: Conversation = None,
+        return_conversation: bool = False,
         **kwargs
-    ) -> AsyncResult:
+    ) -> AsyncResult:      
         model = cls.get_model(model)
-        
         headers = {
-            "accept": "*/*",
-            "accept-language": "en-US,en;q=0.9",
-            "cache-control": "no-cache",
-            "content-type": "application/json",
-            "origin": cls.url,
-            "pragma": "no-cache",
-            "referer": cls.model_referers.get(model, cls.url),
-            "sec-ch-ua": '"Not;A=Brand";v="24", "Chromium";v="128"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Linux"',
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "same-origin",
-            "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+            'accept': '*/*',
+            'accept-language': 'en-US,en;q=0.9',
+            'content-type': 'application/json',
+            'origin': 'https://www.blackbox.ai',
+            'referer': 'https://www.blackbox.ai/',
+            'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
         }
-
-        if model in cls.model_prefixes:
-            prefix = cls.model_prefixes[model]
-            if not messages[0]['content'].startswith(prefix):
-                messages[0]['content'] = f"{prefix} {messages[0]['content']}"
         
-        random_id = ''.join(random.choices(string.ascii_letters + string.digits, k=7))
-        messages[-1]['id'] = random_id
-        messages[-1]['role'] = 'user'
+        connector = TCPConnector(limit=10, ttl_dns_cache=300)
+        timeout = ClientTimeout(total=30)
+        
+        async with ClientSession(headers=headers, connector=connector, timeout=timeout) as session:
+            if conversation is None:
+                conversation = Conversation(model)
+                conversation.validated_value = await cls.fetch_validated()
+                conversation.chat_id = cls.generate_chat_id()
+                conversation.message_history = []
+            
+            current_messages = [{"id": conversation.chat_id, "content": format_prompt(messages), "role": "user"}]
+            conversation.message_history.extend(messages)
 
-        if image is not None:
-            messages[-1]['data'] = {
-                'fileText': '',
-                'imageBase64': to_data_uri(image),
-                'title': image_name
+            if images is not None:
+                current_messages[-1]['data'] = {
+                    "imagesData": [
+                        {
+                            "filePath": f"/{image_name}",
+                            "contents": to_data_uri(image)
+                        }
+                        for image, image_name in images
+                    ],
+                    "fileText": "",
+                    "title": ""
+                }
+
+            data = {
+                "messages": current_messages,
+                "agentMode": cls.agentMode.get(model, {}) if model in cls.agentMode else {},
+                "id": conversation.chat_id,
+                "previewToken": None,
+                "userId": None,
+                "codeModelMode": True,
+                "trendingAgentMode": cls.trendingAgentMode.get(model, {}) if model in cls.trendingAgentMode else {},
+                "isMicMode": False,
+                "userSystemPrompt": None,
+                "maxTokens": max_tokens,
+                "playgroundTopP": top_p,
+                "playgroundTemperature": temperature,
+                "isChromeExt": False,
+                "githubToken": "",
+                "clickedAnswer2": False,
+                "clickedAnswer3": False,
+                "clickedForceWebSearch": False,
+                "visitFromDelta": False,
+                "mobileClient": False,
+                "userSelectedModel": model if model in cls.userSelectedModel else None,
+                "validated": conversation.validated_value,
+                "imageGenerationMode": False,
+                "webSearchModePrompt": False,
+                "deepSearchMode": False,
+                "domains": None,
+                "vscodeClient": False,
+                "codeInterpreterMode": False,
+                "webSearchMode": web_search
             }
-            messages[-1]['content'] = 'FILE:BB\n$#$\n\n$#$\n' + messages[-1]['content']
-        
-        data = {
-            "messages": messages,
-            "id": random_id,
-            "previewToken": None,
-            "userId": None,
-            "codeModelMode": True,
-            "agentMode": {},
-            "trendingAgentMode": {},
-            "isMicMode": False,
-            "userSystemPrompt": None,
-            "maxTokens": 1024,
-            "playgroundTopP": 0.9,
-            "playgroundTemperature": 0.5,
-            "isChromeExt": False,
-            "githubToken": None,
-            "clickedAnswer2": False,
-            "clickedAnswer3": False,
-            "clickedForceWebSearch": False,
-            "visitFromDelta": False,
-            "mobileClient": False,
-            "userSelectedModel": None,
-            "webSearchMode": webSearchMode,
-        }
-
-        if model in cls.agentMode:
-            data["agentMode"] = cls.agentMode[model]
-        elif model in cls.trendingAgentMode:
-            data["trendingAgentMode"] = cls.trendingAgentMode[model]
-        elif model in cls.userSelectedModel:
-            data["userSelectedModel"] = cls.userSelectedModel[model]
-        
-        async with ClientSession(headers=headers) as session:
+            
             async with session.post(cls.api_endpoint, json=data, proxy=proxy) as response:
-                response.raise_for_status()
-                if model == 'ImageGeneration':
-                    response_text = await response.text()
-                    url_match = re.search(r'https://storage\.googleapis\.com/[^\s\)]+', response_text)
-                    if url_match:
-                        image_url = url_match.group(0)
-                        yield ImageResponse(image_url, alt=messages[-1]['content'])
-                    else:
-                        raise Exception("Image URL not found in the response")
-                else:
-                    full_response = ""
-                    search_results_json = ""
-                    async for chunk in response.content.iter_any():
-                        if chunk:
-                            decoded_chunk = chunk.decode()
-                            decoded_chunk = re.sub(r'\$@\$v=[^$]+\$@\$', '', decoded_chunk)
-                            if decoded_chunk.strip():
-                                if '$~~~$' in decoded_chunk:
-                                    search_results_json += decoded_chunk
-                                else:
-                                    full_response += decoded_chunk
-                                    yield decoded_chunk
+                await raise_for_status(response)
+                response_text = await response.text()
+                parts = response_text.split('$~~~$')
+                text_to_yield = parts[2] if len(parts) >= 3 else response_text
+                
+                if not text_to_yield or text_to_yield.isspace():
+                    return
 
-                    if data["webSearchMode"] and search_results_json:
-                        match = re.search(r'\$~~~\$(.*?)\$~~~\$', search_results_json, re.DOTALL)
-                        if match:
-                            search_results = json.loads(match.group(1))
-                            formatted_results = "\n\n**Sources:**\n"
-                            for i, result in enumerate(search_results[:5], 1):
-                                formatted_results += f"{i}. [{result['title']}]({result['link']})\n"
-                            yield formatted_results
+                full_response = ""
+                
+                if model in cls.image_models:
+                    image_url_match = re.search(r'!\[.*?\]\((.*?)\)', text_to_yield)
+                    if image_url_match:
+                        image_url = image_url_match.group(1)
+                        prompt = messages[-1]["content"]
+                        yield ImageResponse(images=[image_url], alt=prompt)
+                else:
+                    if "Generated by BLACKBOX.AI" in text_to_yield:
+                        conversation.validated_value = await cls.fetch_validated(force_refresh=True)
+                        if conversation.validated_value:
+                            data["validated"] = conversation.validated_value
+                            async with session.post(cls.api_endpoint, json=data, proxy=proxy) as new_response:
+                                await raise_for_status(new_response)
+                                new_response_text = await new_response.text()
+                                new_parts = new_response_text.split('$~~~$')
+                                new_text = new_parts[2] if len(new_parts) >= 3 else new_response_text
+                                
+                                if new_text and not new_text.isspace():
+                                    yield new_text
+                                    full_response = new_text
+                        else:
+                            if text_to_yield and not text_to_yield.isspace():
+                                yield text_to_yield
+                                full_response = text_to_yield
+                    else:
+                        if text_to_yield and not text_to_yield.isspace():
+                            yield text_to_yield
+                            full_response = text_to_yield
+
+                if return_conversation:
+                    conversation.message_history.append({"role": "assistant", "content": full_response})
+                    yield conversation
+                
+                yield FinishReason("stop")
