@@ -9,15 +9,6 @@ from .helper import get_connector
 from ..requests import raise_for_status
 
 models = {
-    "gpt-3.5-turbo": {
-        "id": "gpt-3.5-turbo",
-        "name": "GPT-3.5-Turbo",
-        "model": "ChatGPT",
-        "provider": "OpenAI",
-        "maxLength": 48000,
-        "tokenLimit": 14000,
-        "context": "16K",
-    },
     "gpt-4o-mini-free": {
         "id": "gpt-4o-mini-free",
         "name": "GPT-4o-Mini-Free",
@@ -27,26 +18,53 @@ models = {
         "tokenLimit": 7800,
         "context": "8K",
     },
-    "gpt-4o-mini": {
-        "id": "gpt-4o-mini",
-        "name": "GPT-4o-Mini",
-        "model": "ChatGPT",
-        "provider": "OpenAI",
-        "maxLength": 260000,
-        "tokenLimit": 126000,
+    "grok-3": {
+        "id": "grok-3",
+        "name": "Grok-3",
+        "model": "Grok",
+        "provider": "x.ai",
+        "maxLength": 800000,
+        "tokenLimit": 200000,
+        "context": "200K",
+    },
+    "grok-3-r1": {
+        "id": "grok-3-r1",
+        "name": "Grok-3-Thinking",
+        "model": "Grok",
+        "provider": "x.ai",
+        "maxLength": 800000,
+        "tokenLimit": 200000,
+        "context": "200K",
+    },
+    "deepseek-r1": {
+        "id": "deepseek-r1",
+        "name": "DeepSeek-R1",
+        "model": "DeepSeek-R1",
+        "provider": "DeepSeek",
+        "maxLength": 400000,
+        "tokenLimit": 100000,
         "context": "128K",
     },
-    "gpt-4o-free": {
-        "id": "gpt-4o-free",
-        "name": "GPT-4o-free",
-        "model": "ChatGPT",
-        "provider": "OpenAI",
-        "maxLength": 31200,
-        "tokenLimit": 7800,
-        "context": "8K",
+    "deepseek-r1-distill-llama-70b": {
+        "id": "deepseek-r1-distill-llama-70b",
+        "name": "DeepSeek-R1-70B",
+        "model": "DeepSeek-R1-70B",
+        "provider": "DeepSeek",
+        "maxLength": 400000,
+        "tokenLimit": 100000,
+        "context": "128K",
     },
-    "gpt-4o-2024-08-06": {
-        "id": "gpt-4o-2024-08-06",
+    "deepseek-v3": {
+        "id": "deepseek-v3",
+        "name": "DeepSeek-V3",
+        "model": "DeepSeek-V3",
+        "provider": "DeepSeek",
+        "maxLength": 400000,
+        "tokenLimit": 100000,
+        "context": "128K",
+    },
+    "gpt-4o-2024-11-20": {
+        "id": "gpt-4o-2024-11-20",
         "name": "GPT-4o",
         "model": "ChatGPT",
         "provider": "OpenAI",
@@ -54,54 +72,36 @@ models = {
         "tokenLimit": 126000,
         "context": "128K",
     },
-    "gpt-4-turbo-2024-04-09": {
-        "id": "gpt-4-turbo-2024-04-09",
-        "name": "GPT-4-Turbo",
+    "gpt-4o-mini-2024-07-18": {
+        "id": "gpt-4o-mini-2024-07-18",
+        "name": "GPT-4o-Mini",
         "model": "ChatGPT",
         "provider": "OpenAI",
         "maxLength": 260000,
         "tokenLimit": 126000,
         "context": "128K",
     },
-    "grok-2": {
-        "id": "grok-2",
-        "name": "Grok-2",
-        "model": "Grok",
-        "provider": "x.ai",
+    "o3-mini": {
+        "id": "o3-mini",
+        "name": "o3-mini",
+        "model": "o3",
+        "provider": "OpenAI",
         "maxLength": 400000,
         "tokenLimit": 100000,
-        "context": "100K",
+        "context": "128K",
     },
-    "grok-2-mini": {
-        "id": "grok-2-mini",
-        "name": "Grok-2-mini",
-        "model": "Grok",
-        "provider": "x.ai",
+    "o1-preview-2024-09-12": {
+        "id": "o1-preview-2024-09-12",
+        "name": "o1-preview",
+        "model": "o1",
+        "provider": "OpenAI",
         "maxLength": 400000,
         "tokenLimit": 100000,
-        "context": "100K",
+        "context": "128K",
     },
     "claude-3-opus-20240229": {
         "id": "claude-3-opus-20240229",
         "name": "Claude-3-Opus",
-        "model": "Claude",
-        "provider": "Anthropic",
-        "maxLength": 800000,
-        "tokenLimit": 200000,
-        "context": "200K",
-    },
-    "claude-3-opus-20240229-aws": {
-        "id": "claude-3-opus-20240229-aws",
-        "name": "Claude-3-Opus-Aws",
-        "model": "Claude",
-        "provider": "Anthropic",
-        "maxLength": 800000,
-        "tokenLimit": 200000,
-        "context": "200K",
-    },
-    "claude-3-opus-20240229-gcp": {
-        "id": "claude-3-opus-20240229-gcp",
-        "name": "Claude-3-Opus-Gcp",
         "model": "Claude",
         "provider": "Anthropic",
         "maxLength": 800000,
@@ -117,6 +117,15 @@ models = {
         "tokenLimit": 200000,
         "context": "200K",
     },
+    "claude-3-5-sonnet-20241022": {
+        "id": "claude-3-5-sonnet-20241022",
+        "name": "Claude-3.5-Sonnet-V2",
+        "model": "Claude",
+        "provider": "Anthropic",
+        "maxLength": 800000,
+        "tokenLimit": 200000,
+        "context": "200K",
+    },
     "claude-3-sonnet-20240229": {
         "id": "claude-3-sonnet-20240229",
         "name": "Claude-3-Sonnet",
@@ -126,36 +135,45 @@ models = {
         "tokenLimit": 200000,
         "context": "200K",
     },
-    "claude-3-haiku-20240307": {
-        "id": "claude-3-haiku-20240307",
-        "name": "Claude-3-Haiku",
+    "claude-3-opus-20240229-t": {
+        "id": "claude-3-opus-20240229-t",
+        "name": "Claude-3-Opus-T",
         "model": "Claude",
         "provider": "Anthropic",
         "maxLength": 800000,
         "tokenLimit": 200000,
         "context": "200K",
     },
-    "claude-2.1": {
-        "id": "claude-2.1",
-        "name": "Claude-2.1-200k",
+    "claude-3-5-sonnet-20241022-t": {
+        "id": "claude-3-5-sonnet-20241022-t",
+        "name": "Claude-3.5-Sonnet-V2-T",
         "model": "Claude",
         "provider": "Anthropic",
         "maxLength": 800000,
         "tokenLimit": 200000,
         "context": "200K",
     },
-    "gemini-1.5-flash-002": {
-        "id": "gemini-1.5-flash-002",
-        "name": "Gemini-1.5-Flash-1M",
+    "gemini-2.0-flash": {
+        "id": "gemini-2.0-flash",
+        "name": "Gemini-2.0-Flash",
         "model": "Gemini",
         "provider": "Google",
         "maxLength": 4000000,
         "tokenLimit": 1000000,
         "context": "1024K",
     },
-    "gemini-1.5-pro-002": {
-        "id": "gemini-1.5-pro-002",
-        "name": "Gemini-1.5-Pro-1M",
+    "gemini-2.0-flash-thinking-exp": {
+        "id": "gemini-2.0-flash-thinking-exp",
+        "name": "Gemini-2.0-Flash-Thinking-Exp",
+        "model": "Gemini",
+        "provider": "Google",
+        "maxLength": 4000000,
+        "tokenLimit": 1000000,
+        "context": "1024K",
+    },
+    "gemini-2.0-pro-exp": {
+        "id": "gemini-2.0-pro-exp",
+        "name": "Gemini-2.0-Pro-Exp",
         "model": "Gemini",
         "provider": "Google",
         "maxLength": 4000000,
@@ -164,34 +182,32 @@ models = {
     },
 }
 
-
 class Liaobots(AsyncGeneratorProvider, ProviderModelMixin):
     url = "https://liaobots.site"
     working = True
     supports_message_history = True
     supports_system_message = True
-    supports_gpt_4 = True
-    default_model = "gpt-3.5-turbo"
-    models = list(models.keys())
     
+    default_model = "gpt-4o-2024-11-20"
+    models = list(models.keys())
     model_aliases = {
         "gpt-4o-mini": "gpt-4o-mini-free",
-        "gpt-4o": "gpt-4o-free",
-        "gpt-4o": "gpt-4o-2024-08-06",
-              
-        "gpt-4-turbo": "gpt-4-turbo-2024-04-09",
-        "gpt-4": "gpt-4-0613",
+        "gpt-4o": default_model,
+        "gpt-4o-mini": "gpt-4o-mini-2024-07-18",
+        "gpt-4": default_model,
+        
+        "o1-preview": "o1-preview-2024-09-12",
+        
+        "deepseek-r1": "deepseek-r1-distill-llama-70b",
         
         "claude-3-opus": "claude-3-opus-20240229",
-        "claude-3-opus": "claude-3-opus-20240229-aws",
-        "claude-3-opus": "claude-3-opus-20240229-gcp",
-        "claude-3-sonnet": "claude-3-sonnet-20240229",
         "claude-3.5-sonnet": "claude-3-5-sonnet-20240620",
-        "claude-3-haiku": "claude-3-haiku-20240307",
-        "claude-2.1": "claude-2.1",
+        "claude-3.5-sonnet": "claude-3-5-sonnet-20241022",
+        "claude-3-sonnet": "claude-3-sonnet-20240229",
+        "claude-3-opus": "claude-3-opus-20240229-t",
+        "claude-3.5-sonnet": "claude-3-5-sonnet-20241022-t",
         
-        "gemini-flash": "gemini-1.5-flash-002",
-        "gemini-pro": "gemini-1.5-pro-002",
+        "gemini-2.0-flash-thinking": "gemini-2.0-flash-thinking-exp",
     }
     
     _auth_code = ""
@@ -220,7 +236,6 @@ class Liaobots(AsyncGeneratorProvider, ProviderModelMixin):
         cls,
         model: str,
         messages: Messages,
-        auth: str = None,
         proxy: str = None,
         connector: BaseConnector = None,
         **kwargs

@@ -7,7 +7,7 @@ import g4f
 
 g4f.debug.logging = True  # Enable debug logging
 g4f.debug.version_check = False  # Disable automatic version checking
-print(g4f.Provider.Bing.params)  # Print supported args for Bing
+print(g4f.Provider.Gemini.params)  # Print supported args for Gemini
 
 # Using automatic a provider for the given model
 ## Streamed completion
@@ -78,7 +78,7 @@ for message in response:
 
 Image upload and generation are supported by three main providers:
 
-- **Bing & Other GPT-4 Providers:** Utilizes Microsoft's Image Creator.
+- **Microsoft Copilot & Other GPT-4 Providers:** Utilizes Microsoft's Image Creator.
 - **Google Gemini:** Available for free accounts with IP addresses outside Europe.
 - **OpenaiChat with GPT-4:** Accessible for users with a Plus subscription.
 
@@ -111,35 +111,6 @@ for chunk in g4f.ChatCompletion.create(
     if isinstance(chunk, ImageResponse):
         print(chunk.images) # Print generated image links
         print(chunk.alt) # Print used prompt for image generation
-```
-
-##### Using Browser
-
-Some providers using a browser to bypass the bot protection. They using the selenium webdriver to control the browser. The browser settings and the login data are saved in a custom directory. If the headless mode is enabled, the browser windows are loaded invisibly. For performance reasons, it is recommended to reuse the browser instances and close them yourself at the end:
-
-```python
-import g4f
-from undetected_chromedriver import Chrome, ChromeOptions
-from g4f.Provider import (
-    Bard,
-    Poe,
-    AItianhuSpace,
-    MyShell,
-    PerplexityAi,
-)
-
-options = ChromeOptions()
-options.add_argument("--incognito");
-webdriver = Chrome(options=options, headless=True)
-for idx in range(10):
-    response = g4f.ChatCompletion.create(
-        model=g4f.models.default,
-        provider=g4f.Provider.MyShell,
-        messages=[{"role": "user", "content": "Suggest me a name."}],
-        webdriver=webdriver
-    )
-    print(f"{idx}:", response)
-webdriver.quit()
 ```
 
 ##### Async Support
