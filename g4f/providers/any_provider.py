@@ -411,6 +411,7 @@ class AnyModelProviderMixin(ProviderModelMixin):
 class AnyProvider(AsyncGeneratorProvider, AnyModelProviderMixin):
     working = True
     active_by_default = True
+    supports_native_tools = True
 
     @classmethod
     async def create_async_generator(
